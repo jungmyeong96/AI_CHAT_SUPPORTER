@@ -88,6 +88,6 @@ CodeGen Agent가 Qdrant로 데이터를 `upsert`하거나 `search` 시 가중치
     "selected_type": "string (OFFICIAL: 준법감시실 지침 / EXCELLENT: 우수 업무 답변 / GENERAL: 일반 배치 이력)",
     "weight_score": 0.00, 
     "created_at": "string (YYYY-MM-DD)",
-    "created_tm": 1781710520
+    "created_tm": 23:15:20
   }
 }
