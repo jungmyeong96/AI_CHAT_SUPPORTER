@@ -1,0 +1,408 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "generated_by": "Architect Agent",
+    "base_url": "/api/v1",
+    "content_type": "application/json",
+    "hardware_context": {
+      "host_cpu_cores": 4,
+      "host_ram_gb": 8,
+      "backend_container": { "cpus": "1.0", "mem_limit": "1536m" }
+    }
+  },
+  "endpoints": [
+    {
+      "id": "F1",
+      "method": "GET",
+      "path": "/api/v1/chat/rooms/{room_id}/history",
+      "description": "Fetch active chat history for a room, ordered by CREATED_TM ASC",
+      "path_params": {
+        "room_id": {
+          "type": "string",
+          "required": true,
+          "description": "CHAT_ROOM.ROOM_ID (VARCHAR 50)"
+        }
+      },
+      "query_params": {
+        "limit": {
+          "type": "integer",
+          "required": false,
+          "default": 100,
+          "description": "Max messages returned (resource-safe pagination)"
+        },
+        "offset": {
+          "type": "integer",
+          "required": false,
+          "default": 0
+        }
+      },
+      "request_body": null,
+      "response": {
+        "200": {
+          "schema": {
+            "room_id": { "type": "string" },
+            "total_count": { "type": "integer" },
+            "messages": {
+              "type": "array",
+              "items": {
+                "chat_id": { "type": "string", "description": "CHAT_HISTORY.CHAT_ID (UUID v4)" },
+                "room_id": { "type": "string" },
+                "emp_id": { "type": "string" },
+                "emp_name": { "type": "string", "description": "Joined from USER_DEPT.EMP_NAME" },
+                "dept_name": { "type": "string", "description": "Joined from USER_DEPT.DEPT_NAME" },
+                "message": { "type": "string", "description": "Stored text (may contain masked tokens)" },
+                "used_yn": { "type": "integer", "enum": [0, 1], "description": "Always 1 in this response (active records only)" },
+                "compliance_yn": { "type": "integer", "enum": [0, 1], "description": "1=PII/financial violation detected, 0=normal" },
+                "created_at": { "type": "string", "format": "YYYY-MM-DD", "nullable": true },
+                "created_tm": { "type": "string", "format": "ISO-8601" }
+              }
+            }
+          },
+          "example": {
+            "room_id": "ROOM-001",
+            "total_count": 2,
+            "messages": [
+              {
+                "chat_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "room_id": "ROOM-001",
+                "emp_id": "EMP1001",
+                "emp_name": "김운영",
+                "dept_name": "여신운영팀",
+                "message": "대출 심사 기준 확인 부탁드립니다.",
+                "used_yn": 1,
+                "compliance_yn": 0,
+                "created_at": "2026-06-18",
+                "created_tm": "2026-06-18T09:30:00+09:00"
+              },
+              {
+                "chat_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "room_id": "ROOM-001",
+                "emp_id": "EMP1002",
+                "emp_name": "이준법",
+                "dept_name": "준법감시실",
+                "message": "주민번호 [RRN Omitted] 확인 완료했습니다.",
+                "used_yn": 1,
+                "compliance_yn": 1,
+                "created_at": "2026-06-18",
+                "created_tm": "2026-06-18T09:31:12+09:00"
+              }
+            ]
+          }
+        },
+        "404": {
+          "schema": {
+            "detail": { "type": "string", "example": "Room not found: ROOM-001" }
+          }
+        }
+      },
+      "business_rules": [
+        "Filter CHAT_HISTORY WHERE ROOM_ID = {room_id} AND USED_YN = 1",
+        "Order by CREATED_TM ASC",
+        "Join USER_DEPT for emp_name and dept_name",
+        "Include COMPLIANCE_YN on every message for frontend compliance badge rendering"
+      ]
+    },
+    {
+      "id": "F2",
+      "method": "POST",
+      "path": "/api/v1/chat/message",
+      "description": "Create a new chat message with compliance masking pre-filter",
+      "path_params": {},
+      "query_params": {},
+      "request_body": {
+        "schema": {
+          "room_id": { "type": "string", "required": true },
+          "emp_id": { "type": "string", "required": true },
+          "message": { "type": "string", "required": true, "description": "Raw inbound text before server-side masking" }
+        },
+        "example": {
+          "room_id": "ROOM-001",
+          "emp_id": "EMP1001",
+          "message": "고객 주민번호 900101-1234567 확인했습니다."
+        }
+      },
+      "response": {
+        "201": {
+          "schema": {
+            "chat_id": { "type": "string", "description": "New UUID v4 assigned server-side" },
+            "room_id": { "type": "string" },
+            "emp_id": { "type": "string" },
+            "message": { "type": "string", "description": "Masked text persisted to CHAT_HISTORY.MESSAGE" },
+            "used_yn": { "type": "integer", "enum": [1] },
+            "compliance_yn": { "type": "integer", "enum": [0, 1], "description": "REQUIRED: 1 if RRN/financial PII detected, else 0" },
+            "created_at": { "type": "string", "format": "YYYY-MM-DD" },
+            "created_tm": { "type": "string", "format": "ISO-8601" }
+          },
+          "example": {
+            "chat_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+            "room_id": "ROOM-001",
+            "emp_id": "EMP1001",
+            "message": "고객 주민번호 [RRN Omitted] 확인했습니다.",
+            "used_yn": 1,
+            "compliance_yn": 1,
+            "created_at": "2026-06-18",
+            "created_tm": "2026-06-18T09:32:00+09:00"
+          }
+        },
+        "400": {
+          "schema": {
+            "detail": { "type": "string", "example": "Invalid room_id or emp_id" }
+          }
+        }
+      },
+      "compliance_rules": {
+        "patterns_detected": ["Korean RRN (주민등록번호)", "Sensitive financial identifiers"],
+        "masking_tokens": {
+          "rrn": "[RRN Omitted]",
+          "financial": "[Masked Financial Info]"
+        },
+        "compliance_yn_mapping": {
+          "violation_detected": 1,
+          "clean": 0
+        }
+      },
+      "business_rules": [
+        "Run Security & Compliance Service regex filter before INSERT",
+        "Persist masked MESSAGE and COMPLIANCE_YN to CHAT_HISTORY",
+        "Return the committed record immediately for frontend timeline refresh"
+      ]
+    },
+    {
+      "id": "F3",
+      "method": "POST",
+      "path": "/api/v1/ai/recommend/prepare",
+      "description": "Query reformulation + Qdrant RAG fusion with weighted scoring (1.5 / 1.3 / 1.0)",
+      "path_params": {},
+      "query_params": {},
+      "request_body": {
+        "schema": {
+          "chat_id": { "type": "string", "required": true, "description": "Source CHAT_HISTORY.CHAT_ID selected by user" },
+          "room_id": { "type": "string", "required": true },
+          "emp_id": { "type": "string", "required": true, "description": "Requester; DEPT_CD resolved via USER_DEPT for Qdrant pre-filter" }
+        },
+        "example": {
+          "chat_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "room_id": "ROOM-001",
+          "emp_id": "EMP1001"
+        }
+      },
+      "response": {
+        "200": {
+          "schema": {
+            "chat_id": { "type": "string" },
+            "room_id": { "type": "string" },
+            "emp_id": { "type": "string" },
+            "dept_cd": { "type": "string", "description": "Resolved from USER_DEPT for audit trace" },
+            "refined_keywords": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Ollama query reformulation output (F3-1)"
+            },
+            "recommendations": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "description": "Top-1 candidate per selected_type after weighted fusion (F3-2)",
+              "items": {
+                "rank": { "type": "integer", "enum": [1, 2, 3] },
+                "selected_type": { "type": "string", "enum": ["OFFICIAL", "EXCELLENT", "GENERAL"] },
+                "weight_multiplier": { "type": "number", "description": "OFFICIAL=1.5, EXCELLENT=1.3, GENERAL=1.0" },
+                "cosine_score": { "type": "number", "description": "Raw Qdrant cosine similarity (0.0-1.0)" },
+                "fused_score": { "type": "number", "description": "cosine_score * weight_multiplier" },
+                "source_id": { "type": "string", "description": "Qdrant point id (UUID)" },
+                "adopted_question": { "type": "string" },
+                "adopted_answer": { "type": "string" },
+                "keywords": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "example": {
+            "chat_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "room_id": "ROOM-001",
+            "emp_id": "EMP1001",
+            "dept_cd": "DEPT001",
+            "refined_keywords": ["대출", "심사", "기준", "여신"],
+            "recommendations": [
+              {
+                "rank": 1,
+                "selected_type": "OFFICIAL",
+                "weight_multiplier": 1.5,
+                "cosine_score": 0.82,
+                "fused_score": 1.23,
+                "source_id": "d4e5f6a7-b8c9-0123-def0-234567890123",
+                "adopted_question": "대출 심사 기준은 무엇인가요?",
+                "adopted_answer": "준법감시실 지침에 따르면 LTV 70% 이하, DSR 40% 이하를 준수해야 합니다.",
+                "keywords": ["대출", "LTV", "DSR", "준법"]
+              },
+              {
+                "rank": 2,
+                "selected_type": "EXCELLENT",
+                "weight_multiplier": 1.3,
+                "cosine_score": 0.78,
+                "fused_score": 1.014,
+                "source_id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
+                "adopted_question": "여신 심사 시 확인 사항은?",
+                "adopted_answer": "소득증빙, 신용등급, 담보평가 3단계를 순차 확인합니다.",
+                "keywords": ["여신", "소득증빙", "신용등급"]
+              },
+              {
+                "rank": 3,
+                "selected_type": "GENERAL",
+                "weight_multiplier": 1.0,
+                "cosine_score": 0.71,
+                "fused_score": 0.71,
+                "source_id": "f6a7b8c9-d0e1-2345-f012-456789012345",
+                "adopted_question": "고객 대출 문의 응대 방법",
+                "adopted_answer": "내부 FAQ 시스템에서 유사 사례를 검색 후 담당자에게 에스컬레이션합니다.",
+                "keywords": ["FAQ", "에스컬레이션"]
+              }
+            ]
+          }
+        }
+      },
+      "weight_fusion_spec": {
+        "formula": "fused_score = cosine_score * weight_multiplier",
+        "multipliers": {
+          "OFFICIAL": 1.5,
+          "EXCELLENT": 1.3,
+          "GENERAL": 1.0
+        },
+        "qdrant_collection": "adopted_knowledge",
+        "pre_filter": { "payload_key": "dept_cd", "source": "USER_DEPT.DEPT_CD via emp_id" },
+        "external_services": {
+          "ollama": "POST http://ollama:11434/api/generate",
+          "qdrant": "http://qdrant:6333"
+        }
+      },
+      "business_rules": [
+        "F3-1: Ollama query reformulation from chat_id + prior room context",
+        "F3-2: Qdrant pre-filter by dept_cd, then apply weight fusion per selected_type",
+        "Return exactly 3 cards (one per type) for modal.html layout binding"
+      ]
+    },
+    {
+      "id": "F4",
+      "method": "POST",
+      "path": "/api/v1/ai/recommend/adopt",
+      "description": "Adopt selected recommendation and upsert to Qdrant adopted_knowledge collection",
+      "path_params": {},
+      "query_params": {},
+      "request_body": {
+        "schema": {
+          "chat_id": { "type": "string", "required": true, "description": "Source CHAT_HISTORY.CHAT_ID" },
+          "room_id": { "type": "string", "required": true },
+          "emp_id": { "type": "string", "required": true, "description": "Adopter employee ID" },
+          "adopted_question": { "type": "string", "required": true },
+          "adopted_answer": { "type": "string", "required": true },
+          "selected_type": {
+            "type": "string",
+            "required": true,
+            "enum": ["OFFICIAL", "EXCELLENT", "GENERAL"]
+          },
+          "keywords": {
+            "type": "array",
+            "required": true,
+            "items": { "type": "string" }
+          },
+          "weight_score": {
+            "type": "number",
+            "required": true,
+            "description": "Final fused score from prepare step or manual override"
+          }
+        },
+        "example": {
+          "chat_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "room_id": "ROOM-001",
+          "emp_id": "EMP1001",
+          "adopted_question": "대출 심사 기준은 무엇인가요?",
+          "adopted_answer": "준법감시실 지침에 따르면 LTV 70% 이하, DSR 40% 이하를 준수해야 합니다.",
+          "selected_type": "OFFICIAL",
+          "keywords": ["대출", "LTV", "DSR", "준법"],
+          "weight_score": 1.23
+        }
+      },
+      "response": {
+        "201": {
+          "schema": {
+            "adopt_id": { "type": "string", "description": "New UUID v4 issued server-side (Qdrant point id)" },
+            "qdrant_upsert_status": { "type": "string", "enum": ["success", "failed"] },
+            "collection": { "type": "string", "enum": ["adopted_knowledge"] },
+            "vector_size": { "type": "integer", "default": 4096 },
+            "payload": {
+              "chat_id": { "type": "string" },
+              "emp_id": { "type": "string" },
+              "dept_cd": { "type": "string" },
+              "adopted_question": { "type": "string" },
+              "adopted_answer": { "type": "string" },
+              "keywords": { "type": "array", "items": { "type": "string" } },
+              "selected_type": { "type": "string", "enum": ["OFFICIAL", "EXCELLENT", "GENERAL"] },
+              "weight_score": { "type": "number" },
+              "created_at": { "type": "string", "format": "YYYY-MM-DD" },
+              "created_tm": { "type": "integer", "description": "Unix epoch seconds" }
+            }
+          },
+          "example": {
+            "adopt_id": "a7b8c9d0-e1f2-3456-7890-abcdef123456",
+            "qdrant_upsert_status": "success",
+            "collection": "adopted_knowledge",
+            "vector_size": 4096,
+            "payload": {
+              "chat_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "emp_id": "EMP1001",
+              "dept_cd": "DEPT001",
+              "adopted_question": "대출 심사 기준은 무엇인가요?",
+              "adopted_answer": "준법감시실 지침에 따르면 LTV 70% 이하, DSR 40% 이하를 준수해야 합니다.",
+              "keywords": ["대출", "LTV", "DSR", "준법"],
+              "selected_type": "OFFICIAL",
+              "weight_score": 1.23,
+              "created_at": "2026-06-18",
+              "created_tm": 1781710520
+            }
+          }
+        },
+        "502": {
+          "schema": {
+            "detail": { "type": "string", "example": "Qdrant upsert failed" }
+          }
+        }
+      },
+      "qdrant_upsert_spec": {
+        "collection": "adopted_knowledge",
+        "operation": "upsert",
+        "point_structure": {
+          "id": "adopt_id (UUID v4)",
+          "vector": "4096-dim float array from Ollama embedding model",
+          "payload": {
+            "chat_id": "string",
+            "emp_id": "string",
+            "dept_cd": "string",
+            "adopted_question": "text",
+            "adopted_answer": "text",
+            "keywords": ["string"],
+            "selected_type": "OFFICIAL | EXCELLENT | GENERAL",
+            "weight_score": "number",
+            "created_at": "YYYY-MM-DD",
+            "created_tm": "unix epoch integer"
+          }
+        }
+      },
+      "business_rules": [
+        "Issue new ADOPT_ID (UUID v4) on each adoption",
+        "Resolve dept_cd from USER_DEPT via emp_id",
+        "Generate embedding via Ollama, then upsert to Qdrant adopted_knowledge",
+        "ADOPTED_HISTORY is NOT written to SQLite (Qdrant-only storage)"
+      ]
+    }
+  ],
+  "shared_types": {
+    "SelectedType": {
+      "OFFICIAL": "준법감시실 공식 지침 (weight 1.5)",
+      "EXCELLENT": "우수 채택 이력 (weight 1.3)",
+      "GENERAL": "일반 업무 이력 (weight 1.0)"
+    },
+    "ComplianceFlag": {
+      "0": "Normal - no PII violation",
+      "1": "Violation detected - message masked before storage"
+    }
+  }
+}

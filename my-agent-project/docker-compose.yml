@@ -1,0 +1,63 @@
+version: "3.8"
+
+networks:
+  sm-agent-network:
+    driver: bridge
+
+services:
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    networks:
+      - sm-agent-network
+    depends_on:
+      - backend
+    cpus: "0.5"
+    mem_limit: 1024m
+
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src/backend/backend_data:/app/backend_data
+    environment:
+      - DATABASE_PATH=/app/backend_data/ai_assistant.db
+      - DB_DIR=/app/backend_data
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_URL=http://ollama:11434
+    networks:
+      - sm-agent-network
+    depends_on:
+      - qdrant
+      - ollama
+    cpus: "1.0"
+    mem_limit: 1536m
+    restart: always
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    networks:
+      - sm-agent-network
+    cpus: "0.5"
+    mem_limit: 1024m
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_storage:/root/.ollama
+    networks:
+      - sm-agent-network
+    cpus: "2.0"
+    mem_limit: 4096m
